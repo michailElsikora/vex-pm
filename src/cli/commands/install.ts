@@ -34,6 +34,7 @@ export async function installCommand(ctx: CommandContext): Promise<number> {
   const offline = ctx.flags.offline || config.offline;
   const ignoreScripts = ctx.flags['ignore-scripts'] || config.ignoreScripts;
   const strict = ctx.flags.strict || config.strictDependencies;
+  const verbose = ctx.flags.verbose || ctx.flags.v;
 
   // Initialize managers
   const lockfileManager = new LockfileManager({ cwd: ctx.cwd });
@@ -86,6 +87,17 @@ export async function installCommand(ctx: CommandContext): Promise<number> {
 
       packages = result.flat;
       spinner.success(`Resolved ${packages.size} packages`);
+      
+      // Verbose output: list all resolved packages
+      if (verbose) {
+        logger.newline();
+        logger.info('Resolved packages:');
+        const sortedPkgs = Array.from(packages.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+        for (const [key, pkg] of sortedPkgs) {
+          logger.debug(`  ${pkg.name}@${pkg.version}`);
+        }
+        logger.newline();
+      }
     } catch (error) {
       spinner.fail(`Resolution failed: ${error}`);
       return 1;

@@ -2,6 +2,17 @@
  * Progress tracking utilities
  */
 
+// ANSI color codes
+const colors = {
+  reset: '\x1B[0m',
+  dim: '\x1B[2m',
+  cyan: '\x1B[36m',
+  green: '\x1B[32m',
+  yellow: '\x1B[33m',
+  blue: '\x1B[34m',
+  magenta: '\x1B[35m',
+};
+
 export class Spinner {
   private frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   private current = 0;
@@ -20,7 +31,7 @@ export class Spinner {
     process.stdout.write('\x1B[?25l'); // Hide cursor
     this.interval = setInterval(() => {
       const frame = this.frames[this.current];
-      process.stdout.write(`\r${frame} ${this.message}`);
+      process.stdout.write(`\r\x1B[K${colors.cyan}${frame}${colors.reset} ${this.message}`);
       this.current = (this.current + 1) % this.frames.length;
     }, 80);
   }
@@ -45,11 +56,11 @@ export class Spinner {
   }
 
   success(message: string): void {
-    this.stop(`✓ ${message}`);
+    this.stop(`${colors.green}✓${colors.reset} ${message}`);
   }
 
   fail(message: string): void {
-    this.stop(`✗ ${message}`);
+    this.stop(`${colors.yellow}✗${colors.reset} ${message}`);
   }
 }
 
@@ -58,15 +69,19 @@ interface Task {
   name: string;
   status: 'pending' | 'running' | 'complete' | 'failed';
   error?: string;
+  startTime?: number;
 }
 
 export class ProgressTracker {
   private tasks: Map<string, Task> = new Map();
   private silent: boolean;
   private spinner: Spinner | null = null;
+  private startTime: number = Date.now();
+  private lastPkg: string = '';
 
   constructor(silent = false) {
     this.silent = silent;
+    this.startTime = Date.now();
   }
 
   addTask(id: string, name: string): void {
@@ -77,6 +92,7 @@ export class ProgressTracker {
     const task = this.tasks.get(id);
     if (task) {
       task.status = 'running';
+      task.startTime = Date.now();
       this.updateDisplay();
     }
   }
@@ -98,6 +114,22 @@ export class ProgressTracker {
     }
   }
 
+  private createProgressBar(complete: number, total: number, width: number = 20): string {
+    const percent = total > 0 ? complete / total : 0;
+    const filled = Math.round(width * percent);
+    const empty = width - filled;
+    
+    const filledBar = '█'.repeat(filled);
+    const emptyBar = '░'.repeat(empty);
+    
+    return `${colors.green}${filledBar}${colors.dim}${emptyBar}${colors.reset}`;
+  }
+
+  private truncateName(name: string, maxLen: number = 35): string {
+    if (name.length <= maxLen) return name;
+    return name.slice(0, maxLen - 3) + '...';
+  }
+
   private updateDisplay(): void {
     if (this.silent) return;
 
@@ -110,9 +142,25 @@ export class ProgressTracker {
       .filter((t) => t.status === 'running')
       .map((t) => t.name);
 
-    const message = running.length > 0
-      ? `[${complete}/${total}] ${running.slice(0, 3).join(', ')}${running.length > 3 ? '...' : ''}`
-      : `[${complete}/${total}]`;
+    // Get the most recent running package
+    const currentPkg = running.length > 0 ? running[running.length - 1] : this.lastPkg;
+    if (running.length > 0) {
+      this.lastPkg = currentPkg;
+    }
+
+    // Build progress display
+    const progressBar = this.createProgressBar(complete, total);
+    const percent = total > 0 ? Math.round((complete / total) * 100) : 0;
+    const stats = `${colors.cyan}${complete}${colors.reset}/${colors.dim}${total}${colors.reset}`;
+    
+    let message: string;
+    if (running.length > 0) {
+      const pkgDisplay = this.truncateName(currentPkg);
+      const parallelInfo = running.length > 1 ? ` ${colors.dim}(+${running.length - 1})${colors.reset}` : '';
+      message = `${progressBar} ${stats} ${colors.dim}${percent}%${colors.reset} ${colors.magenta}${pkgDisplay}${colors.reset}${parallelInfo}`;
+    } else {
+      message = `${progressBar} ${stats} ${colors.dim}${percent}%${colors.reset}`;
+    }
 
     if (!this.spinner) {
       this.spinner = new Spinner(message, this.silent);
