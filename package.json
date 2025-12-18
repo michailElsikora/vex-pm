@@ -12,13 +12,19 @@
     "dev": "tsc --watch",
     "start": "node bin/vex"
   },
+  "pkg": {
+    "scripts": "dist/**/*.js",
+    "assets": [],
+    "targets": ["node20"],
+    "outputPath": "release"
+  },
   "keywords": [
     "package-manager",
     "npm",
     "node",
     "dependencies"
   ],
-  "author": "",
+  "author": "Elsikora",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
