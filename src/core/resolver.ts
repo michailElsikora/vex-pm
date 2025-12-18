@@ -198,9 +198,25 @@ export class Resolver {
       throw new Error(`No version of ${actualName} satisfies ${actualRange}`);
     }
 
-    // Check if already resolved with same version
+    // Check if we already have a version of this package that satisfies the range
+    // This allows multiple versions when needed for peer dependency compatibility
+    const existingVersions = Array.from(this.resolved.entries())
+      .filter(([key, pkg]) => pkg.name === name)
+      .map(([key, pkg]) => pkg.version);
+    
+    // Try to reuse existing version if it satisfies the range
+    for (const existingVersion of existingVersions) {
+      if (semver.satisfies(existingVersion, actualRange)) {
+        const existingKey = `${name}@${existingVersion}`;
+        const existing = this.resolved.get(existingKey)!;
+        return this.nodeFromResolved(existing, dev, optional, peer);
+      }
+    }
+
     // Use original name for alias support (the alias name should be used in node_modules)
     const resolvedKey = `${name}@${bestVersion}`;
+    
+    // If already resolved with exact same version, return it
     if (this.resolved.has(resolvedKey)) {
       const existing = this.resolved.get(resolvedKey)!;
       return this.nodeFromResolved(existing, dev, optional, peer);

@@ -11,7 +11,7 @@ import { logger } from '../../utils/logger';
 import { Spinner } from '../../utils/progress';
 
 const REPO = 'michailElsikora/vex-pm';
-const VERSION = '1.0.8';
+const VERSION = '1.0.9';
 
 export function getVersion(): string {
   return VERSION;
