@@ -18,6 +18,7 @@ import { linkCommand, unlinkCommand, linksCommand } from './commands/link';
 import { publishCommand } from './commands/publish';
 import { loginCommand, logoutCommand, whoamiCommand } from './commands/login';
 import { configCommand } from './commands/config';
+import { cacheCommand } from './commands/cache';
 
 export interface CommandContext {
   cwd: string;
@@ -26,6 +27,7 @@ export interface CommandContext {
   color: boolean;
   configPath?: string;
   positionals: string[];
+  args: string[];
   flags: Record<string, boolean>;
   options: Record<string, string>;
 }
@@ -52,6 +54,7 @@ const COMMANDS: Record<string, CommandHandler> = {
   logout: logoutCommand,
   whoami: whoamiCommand,
   config: configCommand,
+  cache: cacheCommand,
 };
 
 const COMMAND_ALIASES: Record<string, string> = {
@@ -107,6 +110,7 @@ export async function run(argv: string[]): Promise<number> {
     color,
     configPath: getOption(args, 'config'),
     positionals: args.positionals,
+    args: args.positionals,
     flags: args.flags,
     options: args.options,
   };

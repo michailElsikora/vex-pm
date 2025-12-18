@@ -109,6 +109,18 @@ export async function installCommand(ctx: CommandContext): Promise<number> {
   const fetchResults = await fetcher.fetchAll(packagesToFetch, progress);
   progress.finish();
 
+  // Show cache statistics
+  const fromCache = Array.from(fetchResults.values()).filter(r => r.fromCache).length;
+  const downloaded = fetchResults.size - fromCache;
+  
+  if (fromCache > 0 && downloaded > 0) {
+    logger.success(`Fetched ${fetchResults.size} packages (${fromCache} from cache, ${downloaded} downloaded)`);
+  } else if (fromCache > 0) {
+    logger.success(`Fetched ${fetchResults.size} packages (all from cache)`);
+  } else if (downloaded > 0) {
+    logger.success(`Downloaded ${downloaded} packages`);
+  }
+
   // Check for fetch errors
   const fetchErrors = progress.getErrors();
   if (fetchErrors.length > 0) {

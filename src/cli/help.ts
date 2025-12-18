@@ -201,13 +201,15 @@ const COMMANDS: CommandHelp[] = [
     ],
   },
   {
-    name: 'clean',
-    description: 'Clean cache and/or node_modules',
-    usage: 'vex clean [options]',
-    options: [
-      { flags: '--cache', description: 'Clean only cache' },
-      { flags: '--store', description: 'Clean global store' },
-      { flags: '--all', description: 'Clean everything' },
+    name: 'cache',
+    description: 'Manage package cache',
+    usage: 'vex cache <command>',
+    examples: [
+      { command: 'vex cache list', description: 'List all cached packages' },
+      { command: 'vex cache size', description: 'Show cache size' },
+      { command: 'vex cache path', description: 'Show cache directories' },
+      { command: 'vex cache clean', description: 'Clear tarball cache' },
+      { command: 'vex cache clean all', description: 'Clear all caches' },
     ],
   },
   {
