@@ -7,6 +7,33 @@ set -e
 REPO="michailElsikora/vex-pm"
 INSTALL_DIR="${VEX_INSTALL:-$HOME/.vex}"
 BIN_DIR="$INSTALL_DIR/bin"
+PROFILE=""
+
+# Detect shell profile file
+detect_profile() {
+    SHELL_NAME="$(basename "$SHELL")"
+    
+    case "$SHELL_NAME" in
+        zsh)
+            PROFILE="$HOME/.zshrc"
+            ;;
+        bash)
+            if [ -f "$HOME/.bashrc" ]; then
+                PROFILE="$HOME/.bashrc"
+            elif [ -f "$HOME/.bash_profile" ]; then
+                PROFILE="$HOME/.bash_profile"
+            else
+                PROFILE="$HOME/.profile"
+            fi
+            ;;
+        fish)
+            PROFILE="$HOME/.config/fish/config.fish"
+            ;;
+        *)
+            PROFILE="$HOME/.profile"
+            ;;
+    esac
+}
 
 # Detect OS and architecture
 detect_platform() {
@@ -32,6 +59,34 @@ detect_platform() {
 # Get latest release version
 get_latest_version() {
     curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'
+}
+
+# Add PATH to shell profile
+add_to_path() {
+    detect_profile
+    
+    SHELL_NAME="$(basename "$SHELL")"
+    if [ "$SHELL_NAME" = "fish" ]; then
+        PROFILE_LINE="set -gx PATH $BIN_DIR \$PATH"
+    else
+        PROFILE_LINE="export PATH=\"$BIN_DIR:\$PATH\""
+    fi
+    
+    # Check if already added
+    if [ -f "$PROFILE" ] && grep -q "$BIN_DIR" "$PROFILE" 2>/dev/null; then
+        echo "PATH already configured in $PROFILE"
+        return
+    fi
+    
+    # Create profile directory if needed (for fish)
+    mkdir -p "$(dirname "$PROFILE")"
+    
+    # Add to profile
+    echo "" >> "$PROFILE"
+    echo "# Vex Package Manager" >> "$PROFILE"
+    echo "$PROFILE_LINE" >> "$PROFILE"
+    
+    echo "Added vex to PATH in $PROFILE"
 }
 
 # Download and install
@@ -65,14 +120,20 @@ install_vex() {
     # Make executable
     chmod +x "$BIN_DIR/vex"
     
+    # Add to PATH
+    add_to_path
+    
+    # Export for current session
+    export PATH="$BIN_DIR:$PATH"
+    
     echo ""
-    echo "vex installed successfully to $BIN_DIR/vex"
+    echo "✓ vex $VERSION installed successfully!"
     echo ""
-    echo "Add to your shell profile:"
-    echo "  export PATH=\"$BIN_DIR:\$PATH\""
+    echo "Restart your terminal or run:"
+    echo "  source $PROFILE"
     echo ""
-    echo "Then restart your terminal or run:"
-    echo "  source ~/.bashrc  # or ~/.zshrc"
+    echo "Then verify installation:"
+    echo "  vex --version"
 }
 
 # Install from source if no releases available
@@ -100,7 +161,7 @@ install_from_source() {
     
     mkdir -p "$BIN_DIR"
     cp -r dist "$INSTALL_DIR/"
-    cp -r node_modules "$INSTALL_DIR/"
+    cp -r node_modules "$INSTALL_DIR/" 2>/dev/null || true
     cp package.json "$INSTALL_DIR/"
     
     # Create wrapper script
@@ -115,11 +176,20 @@ EOF
     cd /
     rm -rf "$TEMP_DIR"
     
+    # Add to PATH
+    add_to_path
+    
+    # Export for current session
+    export PATH="$BIN_DIR:$PATH"
+    
     echo ""
-    echo "vex installed successfully to $BIN_DIR/vex"
+    echo "✓ vex installed successfully from source!"
     echo ""
-    echo "Add to your shell profile:"
-    echo "  export PATH=\"$BIN_DIR:\$PATH\""
+    echo "Restart your terminal or run:"
+    echo "  source $PROFILE"
+    echo ""
+    echo "Then verify installation:"
+    echo "  vex --version"
 }
 
 install_vex
