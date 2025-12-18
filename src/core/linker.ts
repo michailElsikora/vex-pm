@@ -10,6 +10,7 @@ import { FetchResult } from './fetcher';
 import { exists, mkdirp, rmrf, symlink, readdir } from '../utils/fs';
 import { isWindows } from '../utils/platform';
 import { logger } from '../utils/logger';
+import * as semver from './semver';
 
 export interface LinkerOptions {
   nodeModulesDir?: string;
@@ -142,29 +143,57 @@ export class Linker {
     
     for (const [depName, depRange] of Object.entries(deps)) {
       const hoistedVersion = this.hoistedVersions.get(depName);
-      if (!hoistedVersion) continue;
-
-      // Find the version that was actually resolved for this dependency
-      // Look through allPackages to find a version that satisfies depRange
-      let neededVersion: string | null = null;
-      for (const [, depPkg] of allPackages) {
-        if (depPkg.name === depName) {
-          // Simple check: if hoisted version doesn't match what we need, find the right one
-          if (depPkg.version !== hoistedVersion) {
-            neededVersion = depPkg.version;
+      
+      // If no hoisted version, check if we need to link it
+      if (!hoistedVersion) {
+        // Find any version of this dependency
+        for (const [key, depPkg] of allPackages) {
+          if (depPkg.name === depName && semver.satisfies(depPkg.version, depRange)) {
+            const fetchResult = fetchResults.get(key);
+            if (fetchResult) {
+              const nestedNodeModules = path.join(pkgPath, 'node_modules');
+              const nestedPkgPath = path.join(nestedNodeModules, depName);
+              mkdirp(nestedNodeModules);
+              try {
+                await this.linkPackage(fetchResult.path, nestedPkgPath);
+                result.linked++;
+                logger.debug(`Linked missing ${depName}@${depPkg.version} in ${pkg.name}`);
+              } catch (error) {
+                result.errors.push(`Failed to link ${key} in ${pkg.name}: ${error}`);
+              }
+            }
             break;
           }
+        }
+        continue;
+      }
+
+      // Check if hoisted version satisfies the required range
+      const hoistedSatisfies = semver.satisfies(hoistedVersion, depRange);
+      
+      if (hoistedSatisfies) {
+        // Hoisted version is fine, no need for nested
+        continue;
+      }
+
+      // Find a version that satisfies the range
+      let neededVersion: string | null = null;
+      let neededKey: string | null = null;
+      
+      for (const [key, depPkg] of allPackages) {
+        if (depPkg.name === depName && semver.satisfies(depPkg.version, depRange)) {
+          neededVersion = depPkg.version;
+          neededKey = key;
+          break;
         }
       }
 
       // If we need a different version than what's hoisted, create nested node_modules
-      if (neededVersion && neededVersion !== hoistedVersion) {
+      if (neededVersion && neededKey) {
         const nestedNodeModules = path.join(pkgPath, 'node_modules');
         const nestedPkgPath = path.join(nestedNodeModules, depName);
         
-        // Find the fetch result for the needed version
-        const key = `${depName}@${neededVersion}`;
-        const fetchResult = fetchResults.get(key);
+        const fetchResult = fetchResults.get(neededKey);
         
         if (fetchResult) {
           mkdirp(nestedNodeModules);
@@ -172,9 +201,9 @@ export class Linker {
           try {
             await this.linkPackage(fetchResult.path, nestedPkgPath);
             result.linked++;
-            logger.debug(`Linked nested ${depName}@${neededVersion} in ${pkg.name}`);
+            logger.debug(`Linked nested ${depName}@${neededVersion} in ${pkg.name} (hoisted ${hoistedVersion} doesn't satisfy ${depRange})`);
           } catch (error) {
-            result.errors.push(`Failed to link nested ${key} in ${pkg.name}: ${error}`);
+            result.errors.push(`Failed to link nested ${neededKey} in ${pkg.name}: ${error}`);
           }
         }
       }
