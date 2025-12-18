@@ -126,6 +126,42 @@ export class Resolver {
   }
 
   /**
+   * Parse npm alias syntax (npm:package-name@version)
+   * Returns { actualName, actualRange } or null if not an alias
+   */
+  private parseNpmAlias(range: string): { actualName: string; actualRange: string } | null {
+    if (!range.startsWith('npm:')) {
+      return null;
+    }
+    
+    // Format: npm:package-name@version or npm:@scope/package@version
+    const aliasValue = range.slice(4); // Remove 'npm:'
+    
+    // Handle scoped packages
+    if (aliasValue.startsWith('@')) {
+      const atIndex = aliasValue.indexOf('@', 1);
+      if (atIndex !== -1) {
+        return {
+          actualName: aliasValue.slice(0, atIndex),
+          actualRange: aliasValue.slice(atIndex + 1),
+        };
+      }
+      return { actualName: aliasValue, actualRange: '*' };
+    }
+    
+    // Handle non-scoped packages
+    const atIndex = aliasValue.indexOf('@');
+    if (atIndex !== -1) {
+      return {
+        actualName: aliasValue.slice(0, atIndex),
+        actualRange: aliasValue.slice(atIndex + 1),
+      };
+    }
+    
+    return { actualName: aliasValue, actualRange: '*' };
+  }
+
+  /**
    * Resolve a single dependency and its transitive dependencies
    */
   private async resolveDependency(
@@ -136,8 +172,19 @@ export class Resolver {
     peer: boolean,
     seen: Set<string>
   ): Promise<DependencyNode | null> {
+    // Handle npm alias syntax (npm:package-name@version)
+    const alias = this.parseNpmAlias(range);
+    let actualName = name;
+    let actualRange = range;
+    
+    if (alias) {
+      actualName = alias.actualName;
+      actualRange = alias.actualRange;
+      logger.debug(`Resolved alias ${name} -> ${actualName}@${actualRange}`);
+    }
+
     // Cycle detection
-    const key = `${name}@${range}`;
+    const key = `${actualName}@${actualRange}`;
     if (seen.has(key)) {
       return null;
     }
@@ -145,20 +192,21 @@ export class Resolver {
     seen.add(key);
 
     // Get package metadata
-    const metadata = await this.getMetadata(name);
+    const metadata = await this.getMetadata(actualName);
     if (!metadata) {
-      throw new Error(`Package not found: ${name}`);
+      throw new Error(`Package not found: ${actualName}`);
     }
 
     // Find best matching version
     const versions = Object.keys(metadata.versions);
-    const bestVersion = semver.maxSatisfying(versions, range);
+    const bestVersion = semver.maxSatisfying(versions, actualRange);
 
     if (!bestVersion) {
-      throw new Error(`No version of ${name} satisfies ${range}`);
+      throw new Error(`No version of ${actualName} satisfies ${actualRange}`);
     }
 
     // Check if already resolved with same version
+    // Use original name for alias support (the alias name should be used in node_modules)
     const resolvedKey = `${name}@${bestVersion}`;
     if (this.resolved.has(resolvedKey)) {
       const existing = this.resolved.get(resolvedKey)!;
@@ -167,12 +215,12 @@ export class Resolver {
 
     const versionData = metadata.versions[bestVersion];
     if (!versionData) {
-      throw new Error(`Version ${bestVersion} not found for ${name}`);
+      throw new Error(`Version ${bestVersion} not found for ${actualName}`);
     }
 
     // Check for deprecation
     if (versionData.deprecated) {
-      this.warnings.push(`${name}@${bestVersion} is deprecated: ${versionData.deprecated}`);
+      this.warnings.push(`${actualName}@${bestVersion} is deprecated: ${versionData.deprecated}`);
     }
 
     // Create resolved package

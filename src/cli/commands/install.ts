@@ -118,7 +118,7 @@ export async function installCommand(ctx: CommandContext): Promise<number> {
     }
     
     // Continue if only optional packages failed
-    const nonOptional = fetchErrors.filter(e => {
+    const nonOptional = fetchErrors.filter((e: { id: string; name: string; message: string }) => {
       const pkg = packages.get(e.id);
       return pkg && !pkg.optional;
     });
