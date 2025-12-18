@@ -30,6 +30,7 @@ export class Linker {
   private useHardlinks: boolean;
   private shamefullyHoist: boolean;
   private directDependencies: Record<string, string>;
+  private hoistedVersions: Map<string, string> = new Map(); // name -> version in root node_modules
 
   constructor(cwd: string, options: LinkerOptions = {}) {
     this.nodeModulesDir = options.nodeModulesDir || path.join(cwd, 'node_modules');
@@ -66,34 +67,118 @@ export class Linker {
     const binDir = path.join(this.nodeModulesDir, '.bin');
     mkdirp(binDir);
 
-    // Separate direct and transitive dependencies
-    // Direct dependencies should be linked last to take priority
-    const directPackages: Array<[string, ResolvedPackage]> = [];
-    const transitivePackages: Array<[string, ResolvedPackage]> = [];
+    // Build version map: determine which version of each package should be hoisted
+    // Priority: direct dependencies > most common version
+    const versionCounts = new Map<string, Map<string, number>>(); // name -> version -> count
+    const packagesByName = new Map<string, ResolvedPackage[]>(); // name -> all versions
+    
+    for (const [, pkg] of packages) {
+      if (!versionCounts.has(pkg.name)) {
+        versionCounts.set(pkg.name, new Map());
+        packagesByName.set(pkg.name, []);
+      }
+      const counts = versionCounts.get(pkg.name)!;
+      counts.set(pkg.version, (counts.get(pkg.version) || 0) + 1);
+      packagesByName.get(pkg.name)!.push(pkg);
+    }
 
-    for (const [key, pkg] of packages) {
-      const directVersion = this.directDependencies[pkg.name];
-      if (directVersion && pkg.version === directVersion) {
-        directPackages.push([key, pkg]);
-      } else {
-        transitivePackages.push([key, pkg]);
+    // Determine hoisted version for each package
+    for (const [name, counts] of versionCounts) {
+      // Check if it's a direct dependency first
+      const directVersion = this.directDependencies[name];
+      if (directVersion && counts.has(directVersion)) {
+        this.hoistedVersions.set(name, directVersion);
+        continue;
+      }
+
+      // Otherwise use most common version
+      let maxCount = 0;
+      let hoistedVersion = '';
+      for (const [version, count] of counts) {
+        if (count > maxCount) {
+          maxCount = count;
+          hoistedVersion = version;
+        }
+      }
+      if (hoistedVersion) {
+        this.hoistedVersions.set(name, hoistedVersion);
       }
     }
 
-    // Link transitive dependencies first
-    for (const [key, pkg] of transitivePackages) {
-      await this.linkSinglePackage(key, pkg, fetchResults, binDir, result);
+    // Link hoisted packages to root node_modules
+    for (const [key, pkg] of packages) {
+      const hoistedVersion = this.hoistedVersions.get(pkg.name);
+      if (hoistedVersion === pkg.version) {
+        await this.linkSinglePackage(key, pkg, fetchResults, binDir, result);
+      }
     }
 
-    // Link direct dependencies last (they override transitive)
-    for (const [key, pkg] of directPackages) {
-      await this.linkSinglePackage(key, pkg, fetchResults, binDir, result);
+    // Link nested dependencies for packages that need different versions
+    for (const [key, pkg] of packages) {
+      await this.linkNestedDependencies(pkg, packages, fetchResults, result);
     }
 
     // Create .vex marker file
     this.writeMarker();
 
     return result;
+  }
+
+  /**
+   * Link nested node_modules for packages that require different versions than hoisted
+   */
+  private async linkNestedDependencies(
+    pkg: ResolvedPackage,
+    allPackages: Map<string, ResolvedPackage>,
+    fetchResults: Map<string, FetchResult>,
+    result: LinkResult
+  ): Promise<void> {
+    // Get path to this package in node_modules
+    const pkgPath = this.getPackagePath(pkg.name);
+    if (!exists(pkgPath)) return;
+
+    // Check each dependency
+    const deps = { ...pkg.dependencies, ...pkg.peerDependencies };
+    
+    for (const [depName, depRange] of Object.entries(deps)) {
+      const hoistedVersion = this.hoistedVersions.get(depName);
+      if (!hoistedVersion) continue;
+
+      // Find the version that was actually resolved for this dependency
+      // Look through allPackages to find a version that satisfies depRange
+      let neededVersion: string | null = null;
+      for (const [, depPkg] of allPackages) {
+        if (depPkg.name === depName) {
+          // Simple check: if hoisted version doesn't match what we need, find the right one
+          if (depPkg.version !== hoistedVersion) {
+            neededVersion = depPkg.version;
+            break;
+          }
+        }
+      }
+
+      // If we need a different version than what's hoisted, create nested node_modules
+      if (neededVersion && neededVersion !== hoistedVersion) {
+        const nestedNodeModules = path.join(pkgPath, 'node_modules');
+        const nestedPkgPath = path.join(nestedNodeModules, depName);
+        
+        // Find the fetch result for the needed version
+        const key = `${depName}@${neededVersion}`;
+        const fetchResult = fetchResults.get(key);
+        
+        if (fetchResult) {
+          mkdirp(nestedNodeModules);
+          
+          try {
+            await this.linkPackage(fetchResult.path, nestedPkgPath);
+            result.linked++;
+            logger.debug(`Linked nested ${depName}@${neededVersion} in ${pkg.name}`);
+          } catch (error) {
+            result.errors.push(`Failed to link nested ${key} in ${pkg.name}: ${error}`);
+          }
+        }
+      }
+    }
   }
 
   /**
