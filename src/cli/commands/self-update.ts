@@ -11,7 +11,7 @@ import { logger } from '../../utils/logger';
 import { Spinner } from '../../utils/progress';
 
 const REPO = 'michailElsikora/vex-pm';
-const VERSION = '1.0.6';
+const VERSION = '1.0.7';
 
 export function getVersion(): string {
   return VERSION;
@@ -53,23 +53,44 @@ export async function selfUpdateCommand(ctx: CommandContext): Promise<number> {
     await downloadFile(downloadUrl, tempPath);
 
     // Find current vex binary location
-    const vexPath = process.argv[1];
-    const vexDir = path.dirname(vexPath);
-    
-    // For Node.js script, we need to find the actual binary
-    let targetPath = vexPath;
+    // Resolve symlinks to find actual binary path
+    let targetPath: string;
     
     // Check common installation paths
     const possiblePaths = [
+      path.join(os.homedir(), '.vex-store', 'bin', 'vex'),
       path.join(os.homedir(), '.vex', 'bin', 'vex'),
       '/usr/local/bin/vex',
       path.join(os.homedir(), '.local', 'bin', 'vex'),
     ];
 
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        targetPath = p;
-        break;
+    // Find first existing path
+    const foundPath = possiblePaths.find(p => fs.existsSync(p));
+    
+    if (foundPath) {
+      // Check if it's a symlink to a dev version
+      try {
+        const realPath = fs.realpathSync(foundPath);
+        // If symlink points to a .ts or node script, use the symlink path itself
+        // as we want to replace the symlink target
+        if (realPath.includes('/Desktop/') || realPath.endsWith('.ts')) {
+          // This is a dev version via vex link - use the symlink location
+          targetPath = foundPath;
+          // Remove symlink and replace with binary
+          fs.unlinkSync(foundPath);
+        } else {
+          targetPath = foundPath;
+        }
+      } catch {
+        targetPath = foundPath;
+      }
+    } else {
+      // Default to .vex-store
+      targetPath = path.join(os.homedir(), '.vex-store', 'bin', 'vex');
+      // Ensure directory exists
+      const dir = path.dirname(targetPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
       }
     }
 
