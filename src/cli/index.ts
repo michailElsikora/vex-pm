@@ -19,6 +19,7 @@ import { publishCommand } from './commands/publish';
 import { loginCommand, logoutCommand, whoamiCommand } from './commands/login';
 import { configCommand } from './commands/config';
 import { cacheCommand } from './commands/cache';
+import { selfUpdateCommand, getVersion } from './commands/self-update';
 
 export interface CommandContext {
   cwd: string;
@@ -55,6 +56,8 @@ const COMMANDS: Record<string, CommandHandler> = {
   whoami: whoamiCommand,
   config: configCommand,
   cache: cacheCommand,
+  'self-update': selfUpdateCommand,
+  upgrade: selfUpdateCommand,
 };
 
 const COMMAND_ALIASES: Record<string, string> = {

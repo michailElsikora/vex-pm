@@ -4,7 +4,7 @@
 
 import { COLORS } from '../utils/logger';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 
 interface CommandHelp {
   name: string;
@@ -210,6 +210,15 @@ const COMMANDS: CommandHelp[] = [
       { command: 'vex cache path', description: 'Show cache directories' },
       { command: 'vex cache clean', description: 'Clear tarball cache' },
       { command: 'vex cache clean all', description: 'Clear all caches' },
+    ],
+  },
+  {
+    name: 'self-update',
+    description: 'Update vex to the latest version',
+    usage: 'vex self-update',
+    examples: [
+      { command: 'vex self-update', description: 'Update to latest version' },
+      { command: 'vex upgrade', description: 'Alias for self-update' },
     ],
   },
   {
