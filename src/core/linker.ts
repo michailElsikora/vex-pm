@@ -132,10 +132,20 @@ export class Linker {
     pkg: ResolvedPackage,
     allPackages: Map<string, ResolvedPackage>,
     fetchResults: Map<string, FetchResult>,
-    result: LinkResult
+    result: LinkResult,
+    parentPath?: string,
+    visited: Set<string> = new Set()
   ): Promise<void> {
+    // Prevent infinite loops
+    const visitKey = `${pkg.name}@${pkg.version}`;
+    if (visited.has(visitKey)) return;
+    visited.add(visitKey);
+
     // Get path to this package in node_modules
-    const pkgPath = this.getPackagePath(pkg.name);
+    const pkgPath = parentPath 
+      ? path.join(parentPath, 'node_modules', pkg.name)
+      : this.getPackagePath(pkg.name);
+    
     if (!exists(pkgPath)) return;
 
     // Use resolvedDependencies which contains the actual resolved versions
@@ -149,8 +159,23 @@ export class Linker {
         const nestedNodeModules = path.join(pkgPath, 'node_modules');
         const nestedPkgPath = path.join(nestedNodeModules, depName);
         
+        // Find the dependency package
+        let depPkg: ResolvedPackage | null = null;
+        let fetchResult: FetchResult | undefined;
+        
         const key = `${depName}@${resolvedVersion}`;
-        const fetchResult = fetchResults.get(key);
+        fetchResult = fetchResults.get(key);
+        
+        // Find depPkg in allPackages
+        for (const [pkgKey, p] of allPackages) {
+          if (p.name === depName && p.version === resolvedVersion) {
+            depPkg = p;
+            if (!fetchResult) {
+              fetchResult = fetchResults.get(pkgKey);
+            }
+            break;
+          }
+        }
         
         if (fetchResult) {
           mkdirp(nestedNodeModules);
@@ -162,28 +187,13 @@ export class Linker {
               result.linked++;
               logger.debug(`Linked nested ${depName}@${resolvedVersion} in ${pkg.name} (hoisted: ${hoistedVersion || 'none'})`);
             }
+            
+            // Recursively link nested dependencies of this dependency
+            if (depPkg) {
+              await this.linkNestedDependencies(depPkg, allPackages, fetchResults, result, pkgPath, visited);
+            }
           } catch (error) {
             result.errors.push(`Failed to link nested ${key} in ${pkg.name}: ${error}`);
-          }
-        } else {
-          // Try to find in allPackages
-          for (const [pkgKey, depPkg] of allPackages) {
-            if (depPkg.name === depName && depPkg.version === resolvedVersion) {
-              const fr = fetchResults.get(pkgKey);
-              if (fr) {
-                mkdirp(nestedNodeModules);
-                try {
-                  if (!exists(nestedPkgPath)) {
-                    await this.linkPackage(fr.path, nestedPkgPath);
-                    result.linked++;
-                    logger.debug(`Linked nested ${depName}@${resolvedVersion} in ${pkg.name}`);
-                  }
-                } catch (error) {
-                  result.errors.push(`Failed to link nested ${pkgKey} in ${pkg.name}: ${error}`);
-                }
-              }
-              break;
-            }
           }
         }
       }
