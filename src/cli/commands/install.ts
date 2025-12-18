@@ -58,8 +58,8 @@ export async function installCommand(ctx: CommandContext): Promise<number> {
     logger.info(`Using ${packages.size} packages from lockfile`);
   } else {
     // Resolve dependencies
-    const spinner = new Spinner('Resolving dependencies...', ctx.silent);
-    spinner.start();
+    logger.info('Resolving dependencies...');
+    const resolveProgress = new ProgressTracker(ctx.silent);
 
     const resolver = new Resolver({
       registry: config.registry,
@@ -71,10 +71,11 @@ export async function installCommand(ctx: CommandContext): Promise<number> {
     });
 
     try {
-      const result = await resolver.resolve(packageJson);
+      const result = await resolver.resolve(packageJson, resolveProgress);
+      resolveProgress.finish();
       
       if (result.errors.length > 0) {
-        spinner.fail('Resolution failed');
+        logger.error('Resolution failed');
         for (const error of result.errors) {
           logger.error(error);
         }
@@ -86,7 +87,7 @@ export async function installCommand(ctx: CommandContext): Promise<number> {
       }
 
       packages = result.flat;
-      spinner.success(`Resolved ${packages.size} packages`);
+      logger.success(`Resolved ${packages.size} packages`);
       
       // Verbose output: list all resolved packages
       if (verbose) {
@@ -99,7 +100,8 @@ export async function installCommand(ctx: CommandContext): Promise<number> {
         logger.newline();
       }
     } catch (error) {
-      spinner.fail(`Resolution failed: ${error}`);
+      resolveProgress.finish();
+      logger.error(`Resolution failed: ${error}`);
       return 1;
     }
   }

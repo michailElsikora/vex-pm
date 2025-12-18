@@ -48,6 +48,8 @@ export class Resolver {
   private resolved: Map<string, ResolvedPackage> = new Map();
   private errors: string[] = [];
   private warnings: string[] = [];
+  private progress?: ProgressTracker;
+  private resolvedCount: number = 0;
 
   constructor(options: ResolverOptions = {}) {
     this.options = options;
@@ -66,6 +68,8 @@ export class Resolver {
     this.errors = [];
     this.warnings = [];
     this.resolved.clear();
+    this.progress = progress;
+    this.resolvedCount = 0;
 
     // Collect all direct dependencies
     const directDeps: Array<{ name: string; range: string; dev: boolean; optional: boolean }> = [];
@@ -89,31 +93,20 @@ export class Resolver {
     }
 
     // Resolve direct dependencies
-    const totalDeps = directDeps.length;
-    let resolved = 0;
-
     await Promise.all(
       directDeps.map(async (dep) => {
-        progress?.addTask(dep.name, dep.name);
-        progress?.startTask(dep.name);
-
         try {
           const node = await this.resolveDependency(dep.name, dep.range, dep.dev, dep.optional, false, new Set());
           if (node) {
             root.set(dep.name, node);
           }
-          progress?.completeTask(dep.name);
         } catch (error) {
           if (dep.optional) {
             this.warnings.push(`Optional dependency ${dep.name} could not be resolved: ${error}`);
-            progress?.completeTask(dep.name);
           } else {
             this.errors.push(`Failed to resolve ${dep.name}: ${error}`);
-            progress?.failTask(dep.name, String(error));
           }
         }
-
-        resolved++;
       })
     );
 
@@ -218,6 +211,13 @@ export class Resolver {
       throw new Error(`Version ${bestVersion} not found for ${actualName}`);
     }
 
+    // Track progress - new package being resolved
+    const taskId = `resolve-${resolvedKey}`;
+    if (this.progress) {
+      this.progress.addTask(taskId, `${name}@${bestVersion}`);
+      this.progress.startTask(taskId);
+    }
+
     // Check for deprecation
     if (versionData.deprecated) {
       this.warnings.push(`${actualName}@${bestVersion} is deprecated: ${versionData.deprecated}`);
@@ -304,6 +304,11 @@ export class Resolver {
         }
       })
     );
+
+    // Mark task as complete
+    if (this.progress) {
+      this.progress.completeTask(taskId);
+    }
 
     return node;
   }
