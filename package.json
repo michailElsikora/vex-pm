@@ -1,0 +1,34 @@
+{
+  "name": "vex-pm",
+  "version": "1.0.0",
+  "description": "Fast, disk-efficient package manager for Node.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "vex": "bin/vex"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node bin/vex"
+  },
+  "keywords": [
+    "package-manager",
+    "npm",
+    "node",
+    "dependencies"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.9.3"
+  }
+}

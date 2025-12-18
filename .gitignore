@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Lockfiles (vex generates its own)
+package-lock.json
+vex-lock.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test coverage
+coverage/
+
+# Backend and Frontend (separate repos)
+packages/
+
+# Local config
+.vexrc
+
