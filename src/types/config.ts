@@ -35,6 +35,7 @@ export interface VexConfig {
   // Node modules
   nodeLinker?: 'hoisted' | 'isolated' | 'pnp';
   shamefullyHoist?: boolean;
+  strictDependencies?: boolean; // When true, each package gets all its deps in nested node_modules
   hoistPattern?: string[];
   publicHoistPattern?: string[];
   

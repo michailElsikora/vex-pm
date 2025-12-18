@@ -33,6 +33,7 @@ export async function installCommand(ctx: CommandContext): Promise<number> {
   const preferOffline = ctx.flags['prefer-offline'] || config.preferOffline;
   const offline = ctx.flags.offline || config.offline;
   const ignoreScripts = ctx.flags['ignore-scripts'] || config.ignoreScripts;
+  const strict = ctx.flags.strict || config.strictDependencies;
 
   // Initialize managers
   const lockfileManager = new LockfileManager({ cwd: ctx.cwd });
@@ -166,6 +167,7 @@ export async function installCommand(ctx: CommandContext): Promise<number> {
   const linker = new Linker(ctx.cwd, {
     useHardlinks: true,
     shamefullyHoist: config.shamefullyHoist,
+    strictDependencies: strict,
     directDependencies,
   });
 

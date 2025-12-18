@@ -17,6 +17,7 @@ export interface LinkerOptions {
   useHardlinks?: boolean;
   hoistPattern?: string[];
   shamefullyHoist?: boolean;
+  strictDependencies?: boolean; // Each package gets all its deps in nested node_modules
   directDependencies?: Record<string, string>; // name -> version from package.json
 }
 
@@ -30,6 +31,7 @@ export class Linker {
   private nodeModulesDir: string;
   private useHardlinks: boolean;
   private shamefullyHoist: boolean;
+  private strictDependencies: boolean;
   private directDependencies: Record<string, string>;
   private hoistedVersions: Map<string, string> = new Map(); // name -> version in root node_modules
 
@@ -37,6 +39,7 @@ export class Linker {
     this.nodeModulesDir = options.nodeModulesDir || path.join(cwd, 'node_modules');
     this.useHardlinks = options.useHardlinks !== false;
     this.shamefullyHoist = options.shamefullyHoist || false;
+    this.strictDependencies = options.strictDependencies || false;
     this.directDependencies = options.directDependencies || {};
   }
 
@@ -154,8 +157,11 @@ export class Linker {
     for (const [depName, resolvedVersion] of Object.entries(resolvedDeps)) {
       const hoistedVersion = this.hoistedVersions.get(depName);
       
-      // If resolved version differs from hoisted, create nested node_modules
-      if (resolvedVersion !== hoistedVersion) {
+      // In strict mode, always create nested node_modules
+      // Otherwise, only if resolved version differs from hoisted
+      const needsNested = this.strictDependencies || resolvedVersion !== hoistedVersion;
+      
+      if (needsNested) {
         const nestedNodeModules = path.join(pkgPath, 'node_modules');
         const nestedPkgPath = path.join(nestedNodeModules, depName);
         
