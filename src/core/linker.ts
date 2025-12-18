@@ -48,13 +48,16 @@ export class Linker {
    */
   async link(
     packages: Map<string, ResolvedPackage>,
-    fetchResults: Map<string, FetchResult>
+    fetchResults: Map<string, FetchResult>,
+    onProgress?: (current: number, total: number, pkgName: string) => void
   ): Promise<LinkResult> {
     const result: LinkResult = {
       linked: 0,
       binaries: 0,
       errors: [],
     };
+    
+    const totalPackages = packages.size;
 
     // Prepare node_modules
     if (exists(this.nodeModulesDir)) {
@@ -110,17 +113,24 @@ export class Linker {
     }
 
     // Link hoisted packages to root node_modules
+    let linkedCount = 0;
     for (const [key, pkg] of packages) {
       const hoistedVersion = this.hoistedVersions.get(pkg.name);
       if (hoistedVersion === pkg.version) {
+        onProgress?.(linkedCount, totalPackages, pkg.name);
         await this.linkSinglePackage(key, pkg, fetchResults, binDir, result);
+        linkedCount++;
       }
     }
 
     // Link nested dependencies for packages that need different versions
     for (const [key, pkg] of packages) {
+      onProgress?.(linkedCount, totalPackages, `nested: ${pkg.name}`);
       await this.linkNestedDependencies(pkg, packages, fetchResults, result);
     }
+
+    // Final progress update
+    onProgress?.(totalPackages, totalPackages, 'done');
 
     // Create .vex marker file
     this.writeMarker();

@@ -157,8 +157,13 @@ export async function installCommand(ctx: CommandContext): Promise<number> {
 
   // Link packages
   logger.newline();
-  const linkSpinner = new Spinner('Linking packages...', ctx.silent);
-  linkSpinner.start();
+  logger.info('Linking packages...');
+  const linkProgress = new ProgressTracker(ctx.silent);
+  
+  // Add tasks for all packages
+  for (const [key, pkg] of packages) {
+    linkProgress.addTask(key, `${pkg.name}@${pkg.version}`);
+  }
 
   // Collect direct dependencies for priority linking
   // We need to find the resolved version for each direct dependency
@@ -186,18 +191,34 @@ export async function installCommand(ctx: CommandContext): Promise<number> {
   });
 
   try {
-    const linkResult = await linker.link(packages, fetchResults);
+    const linkResult = await linker.link(packages, fetchResults, (current, total, pkgName) => {
+      // Mark current package as in progress and previous as complete
+      const pkgKey = Array.from(packages.entries()).find(([_, p]) => p.name === pkgName.replace('nested: ', ''))?.[0];
+      if (pkgKey) {
+        linkProgress.startTask(pkgKey);
+        // Complete previous tasks
+        if (current > 0) {
+          const prevKeys = Array.from(packages.keys()).slice(0, current);
+          for (const pk of prevKeys) {
+            linkProgress.completeTask(pk);
+          }
+        }
+      }
+    });
+    
+    linkProgress.finish();
     
     if (linkResult.errors.length > 0) {
-      linkSpinner.fail('Linking completed with errors');
+      logger.warn('Linking completed with errors');
       for (const error of linkResult.errors) {
         logger.warn(error);
       }
     } else {
-      linkSpinner.success(`Linked ${linkResult.linked} packages, ${linkResult.binaries} binaries`);
+      logger.success(`Linked ${linkResult.linked} packages, ${linkResult.binaries} binaries`);
     }
   } catch (error) {
-    linkSpinner.fail(`Linking failed: ${error}`);
+    linkProgress.finish();
+    logger.error(`Linking failed: ${error}`);
     return 1;
   }
 
