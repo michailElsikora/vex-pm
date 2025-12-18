@@ -121,6 +121,7 @@ export class LockfileManager {
         resolved: pkg.resolved,
         integrity: pkg.integrity,
         dependencies: pkg.dependencies || {},
+        resolvedDependencies: pkg.dependencies || {}, // Use dependencies as resolved versions from lockfile
         peerDependencies: pkg.peerDependencies || {},
         optionalDependencies: pkg.optionalDependencies || {},
         bin: typeof pkg.bin === 'string' 

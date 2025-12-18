@@ -223,13 +223,14 @@ export class Resolver {
       this.warnings.push(`${actualName}@${bestVersion} is deprecated: ${versionData.deprecated}`);
     }
 
-    // Create resolved package
+    // Create resolved package (resolvedDependencies will be filled after resolving transitive deps)
     const resolvedPkg: ResolvedPackage = {
       name,
       version: bestVersion,
       resolved: versionData.dist.tarball,
       integrity: versionData.dist.integrity || `sha1-${versionData.dist.shasum}`,
       dependencies: versionData.dependencies || {},
+      resolvedDependencies: {},
       peerDependencies: versionData.peerDependencies || {},
       optionalDependencies: versionData.optionalDependencies || {},
       bin: this.normalizeBin(name, versionData.bin),
@@ -289,6 +290,8 @@ export class Resolver {
           );
           if (childNode) {
             node.dependencies.set(dep.name, childNode);
+            // Store the actual resolved version
+            resolvedPkg.resolvedDependencies[dep.name] = childNode.version;
           }
         } catch (error) {
           if (dep.optional) {
@@ -407,12 +410,19 @@ export function flattenDependencies(root: Map<string, DependencyNode>): Map<stri
     const key = `${node.name}@${node.version}`;
     if (result.has(key)) return;
 
+    // Build resolvedDependencies from child nodes
+    const resolvedDeps: Record<string, string> = {};
+    for (const [depName, child] of node.dependencies) {
+      resolvedDeps[depName] = child.version;
+    }
+
     result.set(key, {
       name: node.name,
       version: node.version,
       resolved: node.resolved,
       integrity: node.integrity,
       dependencies: {},
+      resolvedDependencies: resolvedDeps,
       peerDependencies: {},
       optionalDependencies: {},
       bin: {},

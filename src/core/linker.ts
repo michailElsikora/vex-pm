@@ -138,72 +138,52 @@ export class Linker {
     const pkgPath = this.getPackagePath(pkg.name);
     if (!exists(pkgPath)) return;
 
-    // Check each dependency
-    const deps = { ...pkg.dependencies, ...pkg.peerDependencies };
+    // Use resolvedDependencies which contains the actual resolved versions
+    const resolvedDeps = pkg.resolvedDependencies || {};
     
-    for (const [depName, depRange] of Object.entries(deps)) {
+    for (const [depName, resolvedVersion] of Object.entries(resolvedDeps)) {
       const hoistedVersion = this.hoistedVersions.get(depName);
       
-      // If no hoisted version, check if we need to link it
-      if (!hoistedVersion) {
-        // Find any version of this dependency
-        for (const [key, depPkg] of allPackages) {
-          if (depPkg.name === depName && semver.satisfies(depPkg.version, depRange)) {
-            const fetchResult = fetchResults.get(key);
-            if (fetchResult) {
-              const nestedNodeModules = path.join(pkgPath, 'node_modules');
-              const nestedPkgPath = path.join(nestedNodeModules, depName);
-              mkdirp(nestedNodeModules);
-              try {
-                await this.linkPackage(fetchResult.path, nestedPkgPath);
-                result.linked++;
-                logger.debug(`Linked missing ${depName}@${depPkg.version} in ${pkg.name}`);
-              } catch (error) {
-                result.errors.push(`Failed to link ${key} in ${pkg.name}: ${error}`);
-              }
-            }
-            break;
-          }
-        }
-        continue;
-      }
-
-      // Check if hoisted version satisfies the required range
-      const hoistedSatisfies = semver.satisfies(hoistedVersion, depRange);
-      
-      if (hoistedSatisfies) {
-        // Hoisted version is fine, no need for nested
-        continue;
-      }
-
-      // Find a version that satisfies the range
-      let neededVersion: string | null = null;
-      let neededKey: string | null = null;
-      
-      for (const [key, depPkg] of allPackages) {
-        if (depPkg.name === depName && semver.satisfies(depPkg.version, depRange)) {
-          neededVersion = depPkg.version;
-          neededKey = key;
-          break;
-        }
-      }
-
-      // If we need a different version than what's hoisted, create nested node_modules
-      if (neededVersion && neededKey) {
+      // If resolved version differs from hoisted, create nested node_modules
+      if (resolvedVersion !== hoistedVersion) {
         const nestedNodeModules = path.join(pkgPath, 'node_modules');
         const nestedPkgPath = path.join(nestedNodeModules, depName);
         
-        const fetchResult = fetchResults.get(neededKey);
+        const key = `${depName}@${resolvedVersion}`;
+        const fetchResult = fetchResults.get(key);
         
         if (fetchResult) {
           mkdirp(nestedNodeModules);
           
           try {
-            await this.linkPackage(fetchResult.path, nestedPkgPath);
-            result.linked++;
-            logger.debug(`Linked nested ${depName}@${neededVersion} in ${pkg.name} (hoisted ${hoistedVersion} doesn't satisfy ${depRange})`);
+            // Check if already exists
+            if (!exists(nestedPkgPath)) {
+              await this.linkPackage(fetchResult.path, nestedPkgPath);
+              result.linked++;
+              logger.debug(`Linked nested ${depName}@${resolvedVersion} in ${pkg.name} (hoisted: ${hoistedVersion || 'none'})`);
+            }
           } catch (error) {
-            result.errors.push(`Failed to link nested ${neededKey} in ${pkg.name}: ${error}`);
+            result.errors.push(`Failed to link nested ${key} in ${pkg.name}: ${error}`);
+          }
+        } else {
+          // Try to find in allPackages
+          for (const [pkgKey, depPkg] of allPackages) {
+            if (depPkg.name === depName && depPkg.version === resolvedVersion) {
+              const fr = fetchResults.get(pkgKey);
+              if (fr) {
+                mkdirp(nestedNodeModules);
+                try {
+                  if (!exists(nestedPkgPath)) {
+                    await this.linkPackage(fr.path, nestedPkgPath);
+                    result.linked++;
+                    logger.debug(`Linked nested ${depName}@${resolvedVersion} in ${pkg.name}`);
+                  }
+                } catch (error) {
+                  result.errors.push(`Failed to link nested ${pkgKey} in ${pkg.name}: ${error}`);
+                }
+              }
+              break;
+            }
           }
         }
       }

@@ -30,7 +30,8 @@ export interface ResolvedPackage {
   version: string;
   resolved: string;
   integrity: string;
-  dependencies: Record<string, string>;
+  dependencies: Record<string, string>;        // name -> range (from package.json)
+  resolvedDependencies: Record<string, string>; // name -> actual resolved version
   peerDependencies: Record<string, string>;
   optionalDependencies: Record<string, string>;
   bin: Record<string, string>;

@@ -4,7 +4,7 @@
 
 import { COLORS } from '../utils/logger';
 
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 
 interface CommandHelp {
   name: string;
